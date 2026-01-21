@@ -916,7 +916,7 @@ export default function Home() {
               className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-all ${
                 isRatingSubmitting
                   ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:scale-105 active:scale-95'
+                  : 'hover:scale-105 active:scale-95 active:-translate-y-2'
               }`}
             >
               <img
@@ -933,7 +933,7 @@ export default function Home() {
               className={`flex flex-col items-center gap-2 p-4 rounded-lg transition-all ${
                 isRatingSubmitting
                   ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:scale-105 active:scale-95'
+                  : 'hover:scale-105 active:scale-95 active:-translate-y-2'
               }`}
             >
               <img
