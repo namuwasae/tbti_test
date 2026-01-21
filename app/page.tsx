@@ -1015,7 +1015,7 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <p className="text-sm text-gray-700 mb-4">
-                  이메일이 성공적으로 저장되었습니다. 감사합니다!
+                  Email has been successfully saved. Thank you!
                 </p>
               </div>
             </div>
