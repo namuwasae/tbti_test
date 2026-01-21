@@ -6,7 +6,17 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Travel Personality Test',
-  description: 'Discover your travel personality type',
+  description: 'Discover your travel personality type through our interactive test',
+  openGraph: {
+    title: 'Travel Personality Test',
+    description: 'Discover your travel personality type through our interactive test',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Travel Personality Test',
+    description: 'Discover your travel personality type through our interactive test',
+  },
 }
 
 export const viewport: Viewport = {
