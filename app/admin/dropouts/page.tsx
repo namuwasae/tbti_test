@@ -142,22 +142,19 @@ export default function DropoutsPage() {
             <div className="bg-white rounded-lg shadow-lg p-4">
               <div className="text-sm text-gray-600 mb-1">Most Common Dropout Q</div>
               <div className="text-2xl font-bold text-gray-800">
-                Q{
-                  dropouts
+                {(() => {
+                  const questionCounts = dropouts
                     .filter(d => d.question_id !== null)
                     .reduce((acc, d) => {
                       acc[d.question_id!] = (acc[d.question_id!] || 0) + 1
                       return acc
                     }, {} as Record<number, number>)
-                  ? Object.entries(
-                      dropouts
-                        .filter(d => d.question_id !== null)
-                        .reduce((acc, d) => {
-                          acc[d.question_id!] = (acc[d.question_id!] || 0) + 1
-                          return acc
-                        }, {} as Record<number, number>)
-                    ).sort((a, b) => b[1] - a[1])[0]?.[0] || '-'
-                }
+                  
+                  const mostCommon = Object.entries(questionCounts)
+                    .sort((a, b) => b[1] - a[1])[0]?.[0]
+                  
+                  return mostCommon ? `Q${mostCommon}` : '-'
+                })()}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-lg p-4">
