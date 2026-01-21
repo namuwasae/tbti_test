@@ -1,0 +1,121 @@
+[
+  {
+    "id": 1,
+    "question": "Tomorrow's departure! What's the main mode for this trip?",
+    "type": "single",
+    "options": [
+      "Recovery first — I'm here to rest and recharge.",
+      "Ultra-efficient trip — packed schedule, I'm spending my stamina.",
+      "People, memories, and good vibes are the whole point.",
+      "I want inspiration — exhibitions, new perspectives, fresh ideas."
+    ]
+  },
+  {
+    "id": 2,
+    "question": "When I plan a trip, I'm more like…",
+    "type": "single",
+    "options": [
+      "I let someone else plan everything and I just follow.",
+      "I research reviews, must-eats, and recommendations to craft the best plan.",
+      "I pick the main spots and decide the rest on the fly."
+    ]
+  },
+  {
+    "id": 3,
+    "question": "You arrive at a viral TikTok café… and the wait is TWO hours?!",
+    "type": "single",
+    "options": [
+      "There's a reason it's popular. I'll wait — let's follow the trend.",
+      "No way. I'd rather find a no-wait local hidden gem.",
+      "The goal is pics. I'll snap a photo at the entrance and dip to somewhere else."
+    ]
+  },
+  {
+    "id": 4,
+    "question": "It's night, and the streets suddenly get super crowded. Where do we go?",
+    "type": "single",
+    "options": [
+      "Where's the crowd? I want that mix of music, chatter, and energy.",
+      "Back to the hotel — time to rest.",
+      "A slightly tucked-away alley café spot."
+    ]
+  },
+  {
+    "id": 5,
+    "question": "If I get lost while exploring…",
+    "type": "single",
+    "options": [
+      "I backtrack — Hansel and Gretel style.",
+      "I keep walking. There's gotta be a way somewhere… the Earth is round anyway."
+    ]
+  },
+  {
+    "id": 6,
+    "question": "When I want a quick break during the trip, where's perfect?",
+    "type": "single",
+    "options": [
+      "A lively café or market — noise, people, energy.",
+      "Hard no to crowds — give me quiet and cozy."
+    ]
+  },
+  {
+    "id": 7,
+    "question": "Last meal of the trip — how do I wrap it up?",
+    "type": "single",
+    "options": [
+      "Skip it. Laziness wins over appetite.",
+      "Should we just hit McDonald's…?",
+      "I'm going all in — I'll fill up on local flavors till the very last bite."
+    ]
+  },
+  {
+    "id": 8,
+    "question": "On the way to the next stop, I find a place that's insanely beautiful. I…",
+    "type": "single",
+    "options": [
+      "Pull over NOW. We're doing this right away.",
+      "Save it on the map — I'll come back later.",
+      "Rework the schedule: can we fit a return visit in today?"
+    ]
+  },
+  {
+    "id": 9,
+    "question": "My idea of a \"travel villain\" is…",
+    "type": "single",
+    "options": [
+      "Someone who takes a taxi for even ONE subway stop.",
+      "The \"go go go\" type who keeps yelling \"hurry up!\" even when people are dying.",
+      "Someone who can't manage time — always late and constantly scrambling."
+    ]
+  },
+  {
+    "id": 10,
+    "question": "It suddenly rains / or the schedule is unexpectedly empty on a rainy day. I…",
+    "type": "single",
+    "options": [
+      "Nice. Perfect time to slowly enjoy indoor spots.",
+      "Rain doesn't matter — we can still wander around.",
+      "Stay at the accommodation and fully maximize the hotel vibes."
+    ]
+  },
+  {
+    "id": 11,
+    "question": "Random traditional liquor pairing — how do you feel?",
+    "type": "single",
+    "options": [
+      "Love it. Surprise pairings are fun!",
+      "I'll try one or two lightly.",
+      "No failures allowed — I'm sticking with what I know."
+    ]
+  },
+  {
+    "id": 12,
+    "question": "You walk into a K-beauty store. What state is your credit card in?",
+    "type": "single",
+    "options": [
+      "Take my money. I might need an extra suitcase.",
+      "Just browsing. I can probably get it cheaper on Amazon later.",
+      "Wait… $50 for this? That's like three chickens"
+    ]
+  }
+]

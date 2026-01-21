@@ -1,0 +1,73 @@
+## 1. 기술 스택 추천
+
+Cursor를 활용해 빠르게 개발하려면 프레임워크 간의 궁합이 중요합니다.
+
+* **Frontend**: **Next.js (App Router)** + **Tailwind CSS**
+* 사용자 응답 시간을 측정하기 위한 클라이언트 로직 구현이 쉽고, Vercel을 통한 배포가 가장 빠릅니다.
+
+
+* **Backend/Database**: **Supabase** (PostgreSQL + Auth)
+* Python이나 별도의 서버를 구축할 필요 없이, API 호출만으로 로그 데이터를 실시간 저장할 수 있습니다.
+
+
+* **Deployment**: **Vercel**
+* Cursor에서 작성한 코드를 GitHub에 올리면 즉시 배포됩니다.
+
+
+
+---
+
+## 2. 핵심 기능 구현 전략: "머무른 시간" 측정
+
+단순히 답변만 저장하는 것이 아니라, "몇 초 고민했는지"를 기록하려면 프런트엔드에서 타이머 로직이 필요합니다.
+
+### 데이터 구조 (Schema) 설계
+
+Supabase 테이블을 다음과 같이 구성하세요.
+
+* `test_results`: 유저 ID, 최종 결과, 테스트 일시
+* `user_logs`: 질문 번호, 선택한 답변, **소요 시간(ms)**, 클릭 이벤트 등
+
+### 고민 시간 측정 코드 예시 (React)
+
+Cursor에게 다음과 같은 로직을 작성해달라고 요청하세요.
+
+```javascript
+const [startTime, setStartTime] = useState(Date.now());
+
+const handleAnswer = (answer) => {
+  const endTime = Date.now();
+  const duration = (endTime - startTime) / 1000; // 초 단위 변환
+
+  // 로그 저장 (Supabase로 전송)
+  saveLogToSupabase({
+    question_id: currentQuestion,
+    answer: answer,
+    thinking_time: duration
+  });
+
+  // 다음 질문으로 이동 시 시간 초기화
+  setStartTime(Date.now());
+  setNextQuestion();
+};
+
+```
+
+---
+
+## 3. Cursor 활용 팁 (AI Engineer 지망생 맞춤)
+
+이미 AI 기술과 Cursor 사용법에 익숙하시니, **MCP(Model Context Protocol)**나 **Rules for AI**를 활용해 보세요.
+
+1. **Cursor Rules 설정**: `.cursorrules` 파일을 만들고 "로그 수집을 위한 데이터 정규화 원칙"이나 "Tailwind 디자인 가이드"를 명시하면 AI가 일관성 있게 코딩해줍니다.
+2. **Prompt 전략**: "단순히 MBTI 테스트를 만들어줘"라고 하기보다, **"사용자의 이탈률과 고민 시간을 분석할 수 있도록 프런트엔드에서 고해상도 타이머 로그를 수집하고 Supabase에 비동기로 저장하는 구조로 짜줘"**라고 구체적으로 지시하세요.
+
+---
+
+## 4. 배포 및 데이터 분석 단계
+
+1. **배포**: GitHub 저장소와 Vercel을 연동합니다. (무료 티어로도 충분합니다.)
+2. **분석 (AI Engineer 관점)**: 수집된 로그 데이터를 PyTorch나 Pandas를 활용해 분석해 보세요.
+* *예: "특정 질문에서 고민 시간이 길다면 질문이 모호한가?"* 혹은 *"고민 시간과 최종 결과 사이에 상관관계가 있는가?"* 같은 가설을 검증할 수 있습니다.
+
+
