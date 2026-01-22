@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server'
 import questionsData from '@/test.json'
 
 // 허용된 성별 값
