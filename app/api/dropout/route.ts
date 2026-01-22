@@ -1,9 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import {
+  validateSessionId,
+  validateAnswers,
+  validateGender,
+  validateAgeGroup,
+  validateRegion,
+  validateNumberRange,
+  validateStringLength,
+  parseRequestBodyWithSizeLimit
+} from '@/lib/validation'
+import { validateCSRFToken } from '@/lib/csrf'
+import { validateRateLimit, addRateLimitHeaders } from '@/lib/rate-limit'
+import questionsData from '@/test.json'
 
 export async function POST(request: NextRequest) {
+  // Rate Limit 검증
+  const rateLimitValidation = validateRateLimit(request, 'dropout')
+  if (!rateLimitValidation.allowed) {
+    const response = NextResponse.json(
+      { error: rateLimitValidation.error || 'Rate limit exceeded' },
+      { status: rateLimitValidation.status || 429 }
+    )
+    if (rateLimitValidation.resetTime) {
+      const retryAfter = Math.ceil((rateLimitValidation.resetTime - Date.now()) / 1000)
+      response.headers.set('Retry-After', retryAfter.toString())
+    }
+    return response
+  }
+
+  // CSRF 검증
+  const csrfValidation = validateCSRFToken(request)
+  if (!csrfValidation.valid) {
+    return NextResponse.json(
+      { error: csrfValidation.error || 'CSRF validation failed' },
+      { status: 403 }
+    )
+  }
+
   try {
-    const body = await request.json()
+    // 본문 크기 제한 검증 및 파싱
+    const bodyParseResult = await parseRequestBodyWithSizeLimit(request)
+    if (bodyParseResult.error) {
+      return NextResponse.json(
+        { error: bodyParseResult.error },
+        { status: 413 } // 413 Payload Too Large
+      )
+    }
+    const body = bodyParseResult.body!
     const { 
       sessionId, 
       questionId, 
@@ -13,11 +57,121 @@ export async function POST(request: NextRequest) {
       completedQuestions, 
       timeSpent,
       answers,
-      questions: questionsData,
       gender,
       ageGroup,
       region
     } = body
+
+    // 입력 검증 시작
+    // 1. 필수 필드 검증
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'Session ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // 2. 세션 ID 검증
+    if (!validateSessionId(sessionId)) {
+      return NextResponse.json(
+        { error: 'Invalid session ID format' },
+        { status: 400 }
+      )
+    }
+
+    // 3. 숫자 필드 검증
+    if (currentQuestionIndex !== undefined && currentQuestionIndex !== null) {
+      const indexValidation = validateNumberRange(currentQuestionIndex, 0, 100, 'currentQuestionIndex')
+      if (!indexValidation.valid) {
+        return NextResponse.json(
+          { error: indexValidation.error },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (totalQuestions !== undefined && totalQuestions !== null) {
+      const totalValidation = validateNumberRange(totalQuestions, 1, 1000, 'totalQuestions')
+      if (!totalValidation.valid) {
+        return NextResponse.json(
+          { error: totalValidation.error },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (completedQuestions !== undefined && completedQuestions !== null) {
+      const completedValidation = validateNumberRange(completedQuestions, 0, 1000, 'completedQuestions')
+      if (!completedValidation.valid) {
+        return NextResponse.json(
+          { error: completedValidation.error },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (timeSpent !== undefined && timeSpent !== null) {
+      const timeValidation = validateNumberRange(timeSpent, 0, 86400, 'timeSpent') // 최대 24시간
+      if (!timeValidation.valid) {
+        return NextResponse.json(
+          { error: timeValidation.error },
+          { status: 400 }
+        )
+      }
+    }
+
+    // 4. questionText 길이 검증
+    if (questionText !== undefined && questionText !== null) {
+      const textValidation = validateStringLength(questionText, 1000, 'questionText')
+      if (!textValidation.valid) {
+        return NextResponse.json(
+          { error: textValidation.error },
+          { status: 400 }
+        )
+      }
+    }
+
+    // 5. 서버에서 직접 질문 데이터 로드 (클라이언트에서 보낸 questionsData는 무시)
+    const questions = questionsData as Array<{
+      id: number
+      question: string
+      type: 'single' | 'multiple'
+      maxSelections?: number
+      options: string[]
+    }>
+
+    // 6. 답변 데이터 검증 (있는 경우, 서버의 질문 데이터를 기반으로)
+    if (answers && Array.isArray(answers) && answers.length > 0) {
+      const answersValidation = validateAnswers(answers, questions)
+      if (!answersValidation.valid) {
+        return NextResponse.json(
+          { error: `Invalid answers data: ${answersValidation.error}` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // 7. 사용자 정보 검증
+    if (!validateGender(gender)) {
+      return NextResponse.json(
+        { error: 'Invalid gender value' },
+        { status: 400 }
+      )
+    }
+
+    if (!validateAgeGroup(ageGroup)) {
+      return NextResponse.json(
+        { error: 'Invalid age group value' },
+        { status: 400 }
+      )
+    }
+
+    if (!validateRegion(region)) {
+      return NextResponse.json(
+        { error: 'Invalid region value' },
+        { status: 400 }
+      )
+    }
 
     // IP 주소와 User-Agent 추출
     const ipAddress = request.headers.get('x-forwarded-for') || 
@@ -98,7 +252,7 @@ export async function POST(request: NextRequest) {
     }
 
     // user_logs 테이블에 각 질문별 상세 로그 저장
-    if (answers && Array.isArray(answers) && answers.length > 0 && questionsData) {
+    if (answers && Array.isArray(answers) && answers.length > 0) {
       const logs: any[] = []
       
       answers.forEach((answer: any) => {
@@ -108,7 +262,7 @@ export async function POST(request: NextRequest) {
           return
         }
         
-        const question = questionsData.find((q: any) => q.id === answer.questionId)
+        const question = questions.find((q: any) => q.id === answer.questionId)
         const questionText = question?.question || ''
         
         // answer.answers가 배열인지 확인하고, 배열이 아니거나 빈 배열인 경우 처리
@@ -165,7 +319,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true })
+    const response = NextResponse.json({ success: true })
+    
+    // Rate Limit 헤더 추가
+    addRateLimitHeaders(response, rateLimitValidation)
+    
+    return response
   } catch (error) {
     console.error('Error in dropout API:', error)
     return NextResponse.json(

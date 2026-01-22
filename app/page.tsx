@@ -70,7 +70,7 @@ export default function Home() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Answer[]>([])
   const [selectedOptions, setSelectedOptions] = useState<number[]>([])
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
@@ -82,6 +82,9 @@ export default function Home() {
   const [isEmailSubmitting, setIsEmailSubmitting] = useState(false)
   const [emailSubmitted, setEmailSubmitted] = useState(false)
   const [emailError, setEmailError] = useState<string>('')
+  
+  // CSRF 토큰 상태
+  const [csrfToken, setCsrfToken] = useState<string | null>(null)
   
   // 여행지 사진 평가 관련 상태
   const [showTravelImages, setShowTravelImages] = useState(false)
@@ -101,6 +104,75 @@ export default function Home() {
   const currentQuestionIdRef = useRef<number>(questions[0]?.id || 0)
   const sessionStartTimeRef = useRef<number>(Date.now())
   const previousQuestionIndexRef = useRef<number>(-1)
+
+  // 세션 ID 가져오기 (서버에서 생성)
+  useEffect(() => {
+    const fetchSessionId = async () => {
+      try {
+        const response = await fetch('/api/session')
+        if (response.ok) {
+          const data = await response.json()
+          setSessionId(data.sessionId)
+        } else {
+          console.error('Failed to fetch session ID')
+          // 실패 시 사용자에게 알림
+          alert('Failed to create session. Please refresh the page.')
+        }
+      } catch (error) {
+        console.error('Error fetching session ID:', error)
+        alert('Failed to create session. Please refresh the page.')
+      }
+    }
+    fetchSessionId()
+  }, [])
+
+  // CSRF 토큰 가져오기
+  useEffect(() => {
+    const fetchCSRFToken = async () => {
+      try {
+        const response = await fetch('/api/csrf-token')
+        if (response.ok) {
+          const data = await response.json()
+          setCsrfToken(data.token)
+        } else {
+          console.error('Failed to fetch CSRF token')
+        }
+      } catch (error) {
+        console.error('Error fetching CSRF token:', error)
+      }
+    }
+    fetchCSRFToken()
+  }, [])
+
+  // CSRF 토큰을 ref로 관리하여 최신 값 보장
+  const csrfTokenRef = useRef<string | null>(null)
+  useEffect(() => {
+    csrfTokenRef.current = csrfToken
+  }, [csrfToken])
+
+  // CSRF 토큰을 헤더에 포함하는 헬퍼 함수 (일반 요청용 - 토큰 필수)
+  const getHeaders = (): HeadersInit => {
+    const token = csrfTokenRef.current || csrfToken
+    if (!token) {
+      throw new Error('CSRF token is not available. Please refresh the page.')
+    }
+    return {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': token,
+    }
+  }
+
+  // beforeunload용 헤더 (토큰 없어도 시도 - 데이터 손실 방지)
+  const getHeadersForBeforeUnload = (): HeadersInit => {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    }
+    const token = csrfTokenRef.current || csrfToken
+    if (token) {
+      headers['X-CSRF-Token'] = token
+    }
+    return headers
+  }
 
   useEffect(() => {
     // 질문이 변경될 때 시간 추적
@@ -160,18 +232,19 @@ export default function Home() {
   // text 설문 이탈 추적 (페이지 언로드 시)
   useEffect(() => {
     if (!userInfo) return // 사용자 정보가 없으면 이탈 추적하지 않음
+    if (!sessionId) return // 세션 ID가 없으면 이탈 추적하지 않음
     if (isComplete) return // 설문이 완료되었으면 이탈 추적하지 않음 (중복 로그 방지)
     if (showTravelImages) return // 사진 설문 중이면 text 설문 이탈 추적하지 않음
 
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (_e: BeforeUnloadEvent) => {
       // 페이지를 떠나기 전에 이탈 정보 저장
       const currentQuestion = questions[currentQuestionIndex]
       const timeSpent = (Date.now() - sessionStartTimeRef.current) / 1000
 
-      // navigator.sendBeacon을 사용하여 비동기로 전송 (페이지 종료 중에도 작동)
+      // fetch를 keepalive 옵션으로 사용하여 비동기로 전송 (페이지 종료 중에도 작동)
       // 이전 설문 기록(answers)도 함께 전송
-      const data = JSON.stringify({
-        sessionId,
+      const data = {
+        sessionId: sessionId!,
         questionId: currentQuestion?.id || null,
         questionText: currentQuestion?.question || null,
         currentQuestionIndex,
@@ -183,9 +256,15 @@ export default function Home() {
         gender: userInfo.gender,
         ageGroup: userInfo.ageGroup,
         region: userInfo.region
-      })
+      }
 
-      navigator.sendBeacon('/api/dropout', new Blob([data], { type: 'application/json' }))
+      // fetch with keepalive (페이지 종료 중에도 전송 가능)
+      fetch('/api/dropout', {
+        method: 'POST',
+        headers: getHeadersForBeforeUnload(),
+        body: JSON.stringify(data),
+        keepalive: true
+      }).catch(err => console.error('Failed to send dropout data:', err))
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
@@ -198,9 +277,10 @@ export default function Home() {
   // 사진 설문 이탈 추적 (페이지 언로드 시)
   useEffect(() => {
     if (!userInfo) return // 사용자 정보가 없으면 이탈 추적하지 않음
+    if (!sessionId) return // 세션 ID가 없으면 이탈 추적하지 않음
     if (!showTravelImages) return // 사진 설문 중이 아니면 이탈 추적하지 않음
 
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (_e: BeforeUnloadEvent) => {
       // 페이지를 떠나기 전에 사진 설문 이탈 정보 저장
       const currentImage = travelImages[currentTravelImageIndex]
       const currentTime = Date.now()
@@ -246,9 +326,9 @@ export default function Home() {
       // 완료한 사진 개수 계산
       const completedImagesCount = completedRatingsMap.size
 
-      // navigator.sendBeacon을 사용하여 비동기로 전송 (페이지 종료 중에도 작동)
-      const data = JSON.stringify({
-        sessionId,
+      // fetch를 keepalive 옵션으로 사용하여 비동기로 전송 (페이지 종료 중에도 작동)
+      const data = {
+        sessionId: sessionId!,
         testResultId: testResultId,
         imageFilename: currentImage,
         currentImageIndex: currentTravelImageIndex,
@@ -259,9 +339,15 @@ export default function Home() {
         gender: userInfo.gender,
         ageGroup: userInfo.ageGroup,
         region: userInfo.region
-      })
+      }
 
-      navigator.sendBeacon('/api/travel-dropout', new Blob([data], { type: 'application/json' }))
+      // fetch with keepalive (페이지 종료 중에도 전송 가능)
+      fetch('/api/travel-dropout', {
+        method: 'POST',
+        headers: getHeadersForBeforeUnload(),
+        body: JSON.stringify(data),
+        keepalive: true
+      }).catch(err => console.error('Failed to send travel dropout data:', err))
     }
 
     window.addEventListener('beforeunload', handleBeforeUnload)
@@ -440,19 +526,64 @@ export default function Home() {
   const submitTest = async (additionalAnswer?: Answer) => {
     if (!userInfo) return
     
+    // 세션 ID가 없으면 대기
+    if (!sessionId) {
+      console.warn('Session ID not available, waiting...')
+      // 세션 ID가 로드될 때까지 최대 3초 대기
+      let attempts = 0
+      while (!sessionId && attempts < 30) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        attempts++
+      }
+      if (!sessionId) {
+        alert('Session is being created. Please try again in a moment.')
+        return
+      }
+    }
+    
+    // CSRF 토큰이 없으면 대기
+    if (!csrfToken && !csrfTokenRef.current) {
+      console.warn('CSRF token not available, waiting...')
+      // CSRF 토큰이 로드될 때까지 최대 3초 대기
+      let attempts = 0
+      while (!csrfToken && !csrfTokenRef.current && attempts < 30) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        attempts++
+      }
+      if (!csrfToken && !csrfTokenRef.current) {
+        alert('CSRF token is being loaded. Please try again in a moment.')
+        return
+      }
+    }
+    
     setIsSubmitting(true)
     
     try {
       // 추가 답변이 있으면 포함하여 제출
-      const answersToSubmit = additionalAnswer 
-        ? [...answers, additionalAnswer]
-        : answers
+      // 중복 방지: 같은 questionId를 가진 답변이 있으면 제거 후 추가
+      let answersToSubmit = answers
+      if (additionalAnswer) {
+        // 같은 questionId를 가진 기존 답변 제거
+        answersToSubmit = answers.filter(
+          answer => answer.questionId !== additionalAnswer.questionId
+        )
+        // 새로운 답변 추가
+        answersToSubmit = [...answersToSubmit, additionalAnswer]
+      }
+      
+      // 중복 제거 확인 (혹시 모를 중복 방지)
+      const seenQuestionIds = new Set<number>()
+      answersToSubmit = answersToSubmit.filter(answer => {
+        if (seenQuestionIds.has(answer.questionId)) {
+          return false // 중복 제거
+        }
+        seenQuestionIds.add(answer.questionId)
+        return true
+      })
       
       const response = await fetch('/api/submit', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           sessionId,
           answers: answersToSubmit,
@@ -471,8 +602,23 @@ export default function Home() {
         // 첫 번째 사진의 시작 시간 기록
         travelImageStartTimeRef.current = Date.now()
       } else {
-        console.error('Failed to submit test')
-        alert('테스트 제출에 실패했습니다. 다시 시도해주세요.')
+        // 서버에서 반환한 실제 에러 메시지 확인
+        let errorMessage = '테스트 제출에 실패했습니다. 다시 시도해주세요.'
+        try {
+          const errorData = await response.json()
+          if (errorData.error) {
+            errorMessage = `제출 실패: ${errorData.error}`
+          } else if (response.status === 403) {
+            errorMessage = 'CSRF 검증에 실패했습니다. 페이지를 새로고침해주세요.'
+          } else if (response.status === 429) {
+            errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.'
+          }
+        } catch (e) {
+          // JSON 파싱 실패 시 기본 메시지 사용
+          console.error('Failed to parse error response:', e)
+        }
+        console.error('Failed to submit test:', response.status, errorMessage)
+        alert(errorMessage)
       }
     } catch (error) {
       console.error('Error submitting test:', error)
@@ -664,7 +810,7 @@ export default function Home() {
   }
 
   const handleTravelImageRating = async (rating: 'good' | 'soso') => {
-    if (!userInfo || isRatingSubmitting) return
+    if (!userInfo || !sessionId || isRatingSubmitting) return
     
     setIsRatingSubmitting(true)
     
@@ -697,9 +843,7 @@ export default function Home() {
       
       const response = await fetch('/api/travel-rating', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           sessionId,
           imageFilename: currentImage,
@@ -737,15 +881,20 @@ export default function Home() {
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    if (!sessionId) {
+      setEmailError('Session has expired. Please refresh the page.')
+      return
+    }
+    
     if (!email) {
-      setEmailError('이메일을 입력해주세요.')
+      setEmailError('Please enter your email address.')
       return
     }
 
     // 이메일 형식 검증
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
-      setEmailError('올바른 이메일 형식을 입력해주세요.')
+      setEmailError('Please enter a valid email format.')
       return
     }
 
@@ -755,9 +904,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/email', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getHeaders(),
         body: JSON.stringify({
           sessionId,
           email
@@ -769,11 +916,11 @@ export default function Home() {
         setEmail('')
       } else {
         const data = await response.json()
-        setEmailError(data.error || '이메일 저장에 실패했습니다. 다시 시도해주세요.')
+        setEmailError(data.error || 'Failed to save email. Please try again.')
       }
     } catch (error) {
       console.error('Error submitting email:', error)
-      setEmailError('이메일 저장 중 오류가 발생했습니다.')
+      setEmailError('An error occurred while saving your email.')
     } finally {
       setIsEmailSubmitting(false)
     }

@@ -1,10 +1,116 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import {
+  validateSessionId,
+  validateAnswers,
+  validateGender,
+  validateAgeGroup,
+  validateRegion,
+  parseRequestBodyWithSizeLimit
+} from '@/lib/validation'
+import { validateCSRFToken } from '@/lib/csrf'
+import { validateRateLimit, addRateLimitHeaders } from '@/lib/rate-limit'
+import questionsData from '@/test.json'
 
 export async function POST(request: NextRequest) {
+  // Rate Limit 검증
+  const rateLimitValidation = validateRateLimit(request, 'submit')
+  if (!rateLimitValidation.allowed) {
+    const response = NextResponse.json(
+      { error: rateLimitValidation.error || 'Rate limit exceeded' },
+      { status: rateLimitValidation.status || 429 }
+    )
+    if (rateLimitValidation.resetTime) {
+      const retryAfter = Math.ceil((rateLimitValidation.resetTime - Date.now()) / 1000)
+      response.headers.set('Retry-After', retryAfter.toString())
+    }
+    return response
+  }
+
+  // CSRF 검증
+  const csrfValidation = validateCSRFToken(request)
+  if (!csrfValidation.valid) {
+    return NextResponse.json(
+      { error: csrfValidation.error || 'CSRF validation failed' },
+      { status: 403 }
+    )
+  }
+
   try {
-    const body = await request.json()
-    const { sessionId, answers, questions, gender, ageGroup, region } = body
+    // 본문 크기 제한 검증 및 파싱
+    const bodyParseResult = await parseRequestBodyWithSizeLimit(request)
+    if (bodyParseResult.error) {
+      return NextResponse.json(
+        { error: bodyParseResult.error },
+        { status: 413 } // 413 Payload Too Large
+      )
+    }
+    const body = bodyParseResult.body!
+    const { sessionId, answers, gender, ageGroup, region } = body
+
+    // 서버에서 직접 질문 데이터 로드 (클라이언트에서 보낸 questions는 무시)
+    const questions = questionsData as Array<{
+      id: number
+      question: string
+      type: 'single' | 'multiple'
+      maxSelections?: number
+      options: string[]
+    }>
+
+    // 입력 검증 시작
+    // 1. 필수 필드 검증
+    if (!sessionId) {
+      return NextResponse.json(
+        { error: 'Session ID is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!answers || !Array.isArray(answers)) {
+      return NextResponse.json(
+        { error: 'Answers must be an array' },
+        { status: 400 }
+      )
+    }
+
+    // 2. 세션 ID 검증
+    if (!validateSessionId(sessionId)) {
+      return NextResponse.json(
+        { error: 'Invalid session ID format' },
+        { status: 400 }
+      )
+    }
+
+    // 3. 답변 데이터 검증 (서버의 질문 데이터를 기반으로)
+    const answersValidation = validateAnswers(answers, questions)
+    if (!answersValidation.valid) {
+      return NextResponse.json(
+        { error: `Invalid answers data: ${answersValidation.error}` },
+        { status: 400 }
+      )
+    }
+
+    // 5. 사용자 정보 검증
+    if (!validateGender(gender)) {
+      return NextResponse.json(
+        { error: 'Invalid gender value' },
+        { status: 400 }
+      )
+    }
+
+    if (!validateAgeGroup(ageGroup)) {
+      return NextResponse.json(
+        { error: 'Invalid age group value' },
+        { status: 400 }
+      )
+    }
+
+    if (!validateRegion(region)) {
+      return NextResponse.json(
+        { error: 'Invalid region value' },
+        { status: 400 }
+      )
+    }
 
     // IP 주소와 User-Agent 추출
     const ipAddress = request.headers.get('x-forwarded-for') || 
@@ -104,10 +210,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true,
       testResultId: testResult.id 
     })
+    
+    // Rate Limit 헤더 추가
+    addRateLimitHeaders(response, rateLimitValidation)
+    
+    return response
   } catch (error) {
     console.error('Error in submit API:', error)
     return NextResponse.json(

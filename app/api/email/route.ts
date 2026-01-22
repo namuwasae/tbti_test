@@ -1,12 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import {
+  validateSessionId,
+  validateEmail,
+  parseRequestBodyWithSizeLimit
+} from '@/lib/validation'
+import { validateCSRFToken } from '@/lib/csrf'
+import { validateRateLimit, addRateLimitHeaders } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // Rate Limit 검증
+  const rateLimitValidation = validateRateLimit(request, 'email')
+  if (!rateLimitValidation.allowed) {
+    const response = NextResponse.json(
+      { error: rateLimitValidation.error || 'Rate limit exceeded' },
+      { status: rateLimitValidation.status || 429 }
+    )
+    if (rateLimitValidation.resetTime) {
+      const retryAfter = Math.ceil((rateLimitValidation.resetTime - Date.now()) / 1000)
+      response.headers.set('Retry-After', retryAfter.toString())
+    }
+    return response
+  }
+
+  // CSRF 검증
+  const csrfValidation = validateCSRFToken(request)
+  if (!csrfValidation.valid) {
+    return NextResponse.json(
+      { error: csrfValidation.error || 'CSRF validation failed' },
+      { status: 403 }
+    )
+  }
+
   try {
-    const body = await request.json()
+    // 본문 크기 제한 검증 및 파싱
+    const bodyParseResult = await parseRequestBodyWithSizeLimit(request)
+    if (bodyParseResult.error) {
+      return NextResponse.json(
+        { error: bodyParseResult.error },
+        { status: 413 } // 413 Payload Too Large
+      )
+    }
+    const body = bodyParseResult.body!
     const { sessionId, email } = body
 
-    // 입력 검증
+    // 입력 검증 시작
+    // 1. 필수 필드 검증
     if (!sessionId || !email) {
       return NextResponse.json(
         { error: 'Session ID and email are required' },
@@ -14,11 +53,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 이메일 형식 검증
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
+    // 2. 세션 ID 검증
+    if (!validateSessionId(sessionId)) {
       return NextResponse.json(
-        { error: 'Invalid email format' },
+        { error: 'Invalid session ID format' },
+        { status: 400 }
+      )
+    }
+
+    // 3. 이메일 검증
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      return NextResponse.json(
+        { error: emailValidation.error },
         { status: 400 }
       )
     }
@@ -90,10 +137,15 @@ export async function POST(request: NextRequest) {
       // 평가 업데이트 실패해도 test_results는 업데이트되었으므로 계속 진행
     }
 
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       success: true,
       id: updatedData.id 
     })
+    
+    // Rate Limit 헤더 추가
+    addRateLimitHeaders(response, rateLimitValidation)
+    
+    return response
   } catch (error) {
     console.error('Error in email API:', error)
     return NextResponse.json(
