@@ -52,11 +52,12 @@ const rateLimitStore = new Map<string, RequestRecord>()
 const cleanupInterval = 60 * 1000 // 1분마다 정리
 setInterval(() => {
   const now = Date.now()
-  for (const [key, record] of rateLimitStore.entries()) {
+  // ES5 호환성을 위해 forEach 사용
+  rateLimitStore.forEach((record, key) => {
     if (record.resetTime < now) {
       rateLimitStore.delete(key)
     }
-  }
+  })
 }, cleanupInterval)
 
 // IP 주소 추출
