@@ -782,7 +782,9 @@ export default function Home() {
   // 여행지 사진 평가 페이지
   if (isComplete && showTravelImages) {
     const currentImage = travelImages[currentTravelImageIndex]
-    const progress = ((currentTravelImageIndex + 1) / travelImages.length) * 100
+    const totalQuestions = questions.length + travelImages.length
+    const completedQuestions = questions.length + currentTravelImageIndex + 1
+    const progress = (completedQuestions / totalQuestions) * 100
     
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-4">
@@ -812,7 +814,7 @@ export default function Home() {
                   Image {currentTravelImageIndex + 1} of {travelImages.length}
                 </span>
                 <span className="text-sm font-medium text-gray-700">
-                  {Math.round(progress)}%
+                  {completedQuestions} / {totalQuestions} ({Math.round(progress)}%)
                 </span>
               </div>
             </div>
@@ -922,7 +924,7 @@ export default function Home() {
               <img
                 src="/images/buttons/soso.png"
                 alt="Soso"
-                className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
+                className="h-24 w-auto sm:h-28 object-contain"
               />
               <span className="text-sm font-medium text-gray-700">Soso</span>
             </button>
@@ -939,7 +941,7 @@ export default function Home() {
               <img
                 src="/images/buttons/good.png"
                 alt="Good"
-                className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
+                className="h-24 w-auto sm:h-28 object-contain"
               />
               <span className="text-sm font-medium text-gray-700">Good</span>
             </button>
@@ -1026,7 +1028,9 @@ export default function Home() {
   }
 
   const currentQuestion = questions[currentQuestionIndex]
-  const progress = ((currentQuestionIndex + 1) / questions.length) * 100
+  const totalQuestions = questions.length + travelImages.length
+  const completedQuestions = currentQuestionIndex + 1
+  const progress = (completedQuestions / totalQuestions) * 100
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 px-4 sm:py-8">
@@ -1053,7 +1057,7 @@ export default function Home() {
                 Question {currentQuestionIndex + 1} of {questions.length}
               </span>
               <span className="text-xs sm:text-sm font-medium text-gray-700">
-                {Math.round(progress)}%
+                {completedQuestions} / {totalQuestions} ({Math.round(progress)}%)
               </span>
             </div>
           </div>
