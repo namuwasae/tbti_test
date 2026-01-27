@@ -112,6 +112,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 중복 제출 방지: 같은 session_id로 이미 완료된 설문이 있는지 확인
+    const { data: existingResult, error: checkError } = await supabaseAdmin
+      .from('test_results')
+      .select('id, completed_at')
+      .eq('session_id', sessionId)
+      .not('completed_at', 'is', null)
+      .maybeSingle()
+
+    if (checkError) {
+      console.error('Error checking for existing result:', checkError)
+      return NextResponse.json(
+        { error: 'Failed to check for existing submission' },
+        { status: 500 }
+      )
+    }
+
+    if (existingResult) {
+      console.warn(`Duplicate submission attempt for session_id: ${sessionId}`)
+      return NextResponse.json(
+        { error: 'This survey has already been submitted' },
+        { status: 409 } // 409 Conflict
+      )
+    }
+
     // IP 주소와 User-Agent 추출
     const ipAddress = request.headers.get('x-forwarded-for') || 
                      request.headers.get('x-real-ip') || 

@@ -72,6 +72,7 @@ export default function Home() {
   const [selectedOptions, setSelectedOptions] = useState<number[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const isSubmittingRef = useRef<boolean>(false)
   const [isComplete, setIsComplete] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [showUserInfoForm, setShowUserInfoForm] = useState(true)
@@ -149,6 +150,11 @@ export default function Home() {
   useEffect(() => {
     csrfTokenRef.current = csrfToken
   }, [csrfToken])
+
+  // isSubmitting을 ref로도 관리하여 빠른 연속 호출 방지
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting
+  }, [isSubmitting])
 
   // CSRF 토큰을 헤더에 포함하는 헬퍼 함수 (일반 요청용 - 토큰 필수)
   const getHeaders = (): HeadersInit => {
@@ -526,6 +532,12 @@ export default function Home() {
   const submitTest = async (additionalAnswer?: Answer) => {
     if (!userInfo) return
     
+    // 중복 제출 방지: 이미 제출 중이면 무시 (ref로 즉시 확인)
+    if (isSubmittingRef.current || isSubmitting) {
+      console.warn('Already submitting, ignoring duplicate request')
+      return
+    }
+    
     // 세션 ID가 없으면 대기
     if (!sessionId) {
       console.warn('Session ID not available, waiting...')
@@ -557,6 +569,7 @@ export default function Home() {
     }
     
     setIsSubmitting(true)
+    isSubmittingRef.current = true
     
     try {
       // 추가 답변이 있으면 포함하여 제출
@@ -625,6 +638,7 @@ export default function Home() {
       alert('테스트 제출 중 오류가 발생했습니다.')
     } finally {
       setIsSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
 
