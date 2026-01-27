@@ -465,10 +465,9 @@ export default function Home() {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1)
       setSelectedOptions([])
-    } else {
-      // 모든 질문 완료
-      submitTest()
     }
+    // 마지막 질문이면 submitTest는 handleOptionClick이나 handleNext에서 이미 호출됨
+    // 여기서는 호출하지 않음 (중복 방지)
   }
 
   const handlePrevious = () => {
@@ -532,11 +531,21 @@ export default function Home() {
   const submitTest = async (additionalAnswer?: Answer) => {
     if (!userInfo) return
     
-    // 중복 제출 방지: 이미 제출 중이면 무시 (ref로 즉시 확인)
-    if (isSubmittingRef.current || isSubmitting) {
+    // 이미 완료되었으면 중복 제출 방지
+    if (isComplete) {
+      console.warn('Test already completed, ignoring duplicate submission')
+      return
+    }
+    
+    // 중복 제출 방지: ref를 먼저 체크하고 동기적으로 설정 (race condition 방지)
+    if (isSubmittingRef.current) {
       console.warn('Already submitting, ignoring duplicate request')
       return
     }
+    
+    // ref를 먼저 설정하여 동시 호출 방지 (동기적)
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
     
     // 세션 ID가 없으면 대기
     if (!sessionId) {
@@ -548,6 +557,8 @@ export default function Home() {
         attempts++
       }
       if (!sessionId) {
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
         alert('Session is being created. Please try again in a moment.')
         return
       }
@@ -563,13 +574,12 @@ export default function Home() {
         attempts++
       }
       if (!csrfToken && !csrfTokenRef.current) {
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
         alert('CSRF token is being loaded. Please try again in a moment.')
         return
       }
     }
-    
-    setIsSubmitting(true)
-    isSubmittingRef.current = true
     
     try {
       // 추가 답변이 있으면 포함하여 제출
@@ -617,21 +627,34 @@ export default function Home() {
       } else {
         // 서버에서 반환한 실제 에러 메시지 확인
         let errorMessage = '테스트 제출에 실패했습니다. 다시 시도해주세요.'
+        let isDuplicate = false
         try {
           const errorData = await response.json()
           if (errorData.error) {
             errorMessage = `제출 실패: ${errorData.error}`
-          } else if (response.status === 403) {
+          }
+          if (response.status === 403) {
             errorMessage = 'CSRF 검증에 실패했습니다. 페이지를 새로고침해주세요.'
           } else if (response.status === 429) {
             errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.'
+          } else if (response.status === 409) {
+            // 중복 제출 에러인 경우 완료 상태로 설정
+            isDuplicate = true
+            errorMessage = '이미 제출된 설문입니다.'
           }
         } catch (e) {
           // JSON 파싱 실패 시 기본 메시지 사용
           console.error('Failed to parse error response:', e)
         }
         console.error('Failed to submit test:', response.status, errorMessage)
-        alert(errorMessage)
+        
+        // 중복 제출인 경우 완료 상태로 설정 (이미 서버에 저장됨)
+        if (isDuplicate) {
+          setIsComplete(true)
+          // 서버에서 기존 testResultId를 가져올 수 있다면 설정
+        } else {
+          alert(errorMessage)
+        }
       }
     } catch (error) {
       console.error('Error submitting test:', error)

@@ -113,27 +113,57 @@ export async function POST(request: NextRequest) {
     }
 
     // 중복 제출 방지: 같은 session_id로 이미 완료된 설문이 있는지 확인
-    const { data: existingResult, error: checkError } = await supabaseAdmin
+    // completed_at이 null이 아닌 레코드가 있으면 중복 제출로 간주
+    const { data: existingCompletedResult, error: checkCompletedError } = await supabaseAdmin
       .from('test_results')
-      .select('id, completed_at')
+      .select('id, completed_at, created_at')
       .eq('session_id', sessionId)
       .not('completed_at', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
-    if (checkError) {
-      console.error('Error checking for existing result:', checkError)
+    if (checkCompletedError) {
+      console.error('Error checking for existing completed result:', checkCompletedError)
       return NextResponse.json(
         { error: 'Failed to check for existing submission' },
         { status: 500 }
       )
     }
 
-    if (existingResult) {
-      console.warn(`Duplicate submission attempt for session_id: ${sessionId}`)
+    if (existingCompletedResult) {
+      console.warn(`Duplicate submission attempt for session_id: ${sessionId}, existing id: ${existingCompletedResult.id}`)
       return NextResponse.json(
         { error: 'This survey has already been submitted' },
         { status: 409 } // 409 Conflict
       )
+    }
+
+    // 추가 안전장치: 같은 session_id로 최근 5초 내에 생성된 레코드가 있는지 확인
+    // (동시 요청으로 인한 race condition 방지)
+    const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString()
+    const { data: recentResults, error: checkRecentError } = await supabaseAdmin
+      .from('test_results')
+      .select('id, completed_at, created_at')
+      .eq('session_id', sessionId)
+      .gte('created_at', fiveSecondsAgo)
+      .order('created_at', { ascending: false })
+
+    if (checkRecentError) {
+      console.error('Error checking for recent results:', checkRecentError)
+      // 에러가 발생해도 계속 진행 (로깅만)
+    } else if (recentResults && recentResults.length > 0) {
+      // 최근 5초 내에 생성된 레코드가 있고, 그 중 completed_at이 null이 아닌 것이 있으면 중복
+      const hasCompleted = recentResults.some(r => r.completed_at !== null)
+      if (hasCompleted) {
+        console.warn(`Recent duplicate submission detected for session_id: ${sessionId}`)
+        return NextResponse.json(
+          { error: 'This survey has already been submitted' },
+          { status: 409 } // 409 Conflict
+        )
+      }
+      // completed_at이 null인 레코드가 있으면 (dropout), 그것도 중복으로 간주하지 않음
+      // 하지만 완료된 설문이 있으면 중복으로 간주
     }
 
     // IP 주소와 User-Agent 추출
@@ -143,6 +173,7 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || 'unknown'
 
     // test_results 테이블에 메인 레코드 생성
+    const completedAt = new Date().toISOString()
     const { data: testResult, error: testResultError } = await supabaseAdmin
       .from('test_results')
       .insert({
@@ -153,17 +184,58 @@ export async function POST(request: NextRequest) {
         age_group: ageGroup || null,
         region: region || null,
         answers: answers,
-        completed_at: new Date().toISOString()
+        completed_at: completedAt
       })
       .select()
       .single()
 
     if (testResultError) {
       console.error('Error creating test result:', testResultError)
+      
+      // Unique constraint violation 체크 (만약 DB에 unique constraint가 있다면)
+      if (testResultError.code === '23505' || testResultError.message?.includes('unique')) {
+        console.warn(`Unique constraint violation for session_id: ${sessionId}`)
+        return NextResponse.json(
+          { error: 'This survey has already been submitted' },
+          { status: 409 } // 409 Conflict
+        )
+      }
+      
       return NextResponse.json(
         { error: 'Failed to save test result' },
         { status: 500 }
       )
+    }
+
+    // 추가 안전장치: INSERT 후에 같은 session_id로 completed_at이 null이 아닌 레코드가 여러 개인지 확인
+    // 만약 여러 개가 있다면 가장 최근 것만 남기고 나머지 삭제
+    const { data: duplicateResults, error: duplicateCheckError } = await supabaseAdmin
+      .from('test_results')
+      .select('id, completed_at, created_at')
+      .eq('session_id', sessionId)
+      .not('completed_at', 'is', null)
+      .order('created_at', { ascending: false })
+
+    if (!duplicateCheckError && duplicateResults && duplicateResults.length > 1) {
+      console.warn(`Found ${duplicateResults.length} completed results for session_id: ${sessionId}, keeping only the most recent one`)
+      // 가장 최근 것(id가 testResult.id)을 제외한 나머지 삭제
+      const idsToDelete = duplicateResults
+        .filter(r => r.id !== testResult.id)
+        .map(r => r.id)
+      
+      if (idsToDelete.length > 0) {
+        const { error: deleteError } = await supabaseAdmin
+          .from('test_results')
+          .delete()
+          .in('id', idsToDelete)
+        
+        if (deleteError) {
+          console.error('Error deleting duplicate results:', deleteError)
+          // 삭제 실패해도 계속 진행 (로깅만)
+        } else {
+          console.log(`Deleted ${idsToDelete.length} duplicate result(s) for session_id: ${sessionId}`)
+        }
+      }
     }
 
     // user_logs 테이블에 각 질문별 상세 로그 저장

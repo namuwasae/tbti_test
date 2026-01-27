@@ -88,6 +88,12 @@ CREATE TABLE IF NOT EXISTS travel_image_dropouts (
 -- 인덱스 생성 (조회 성능 향상)
 CREATE INDEX IF NOT EXISTS idx_test_results_session_id ON test_results(session_id);
 CREATE INDEX IF NOT EXISTS idx_test_results_created_at ON test_results(created_at);
+
+-- 중복 제출 방지를 위한 부분 고유 인덱스
+-- 같은 session_id로 completed_at이 null이 아닌 레코드는 하나만 허용
+CREATE UNIQUE INDEX IF NOT EXISTS idx_test_results_session_id_completed_unique 
+ON test_results(session_id) 
+WHERE completed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_user_logs_test_result_id ON user_logs(test_result_id);
 CREATE INDEX IF NOT EXISTS idx_user_logs_session_id ON user_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_user_logs_question_id ON user_logs(question_id);
